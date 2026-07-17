@@ -29,6 +29,8 @@ FLAT_DIAMETER  = 45.0     # diameter of the flat crown (print base)
 
 STRING_GAP     = 4.0      # total gap between the two assembled inner faces
 RIM_FILLET     = 2.0      # radius of the round-over at the outer rim (string area)
+CROWN_FILLET   = 3.0      # radius of the round-over at the flat crown edge (slightly
+                           # more than RIM_FILLET so the crown edge feels less sharp)
 
 # --- hollow threaded axle ---
 AXLE_BORE      = 6.0      # centre bore diameter
@@ -60,6 +62,34 @@ def r_outer(z):
     """Outer dome radius at height z (0 = crown, HALF_WIDTH = inner face)."""
     z = min(max(z, 0.0), HALF_WIDTH)
     return R * math.sqrt(max(1.0 - ((HALF_WIDTH - z) / C) ** 2, 0.0))
+
+
+def crown_fillet_arc(fillet_r, n_arc=12):
+    """Round-over profile points for the flat-crown / dome corner at (FLAT_R, 0).
+    The flat crown is horizontal there; the dome wall leaves the corner at its
+    analytic tangent slope. A circle of radius fillet_r tangent to both lines
+    replaces the sharp corner. Returns (p1, [interior arc pts], p2) where p1
+    sits on the flat crown and p2 sits on the dome wall, both (r, z) tuples."""
+    slope = R * R * HALF_WIDTH / (C * C * FLAT_R)   # dr/dz of the dome at z=0
+    e1 = (-1.0, 0.0)                                 # along the flat, back toward axis
+    norm2 = math.hypot(slope, 1.0)
+    e2 = (slope / norm2, 1.0 / norm2)                # along the dome, away from crown
+    theta = math.acos(max(-1.0, min(1.0, -e2[0])))   # interior angle at the corner
+    t = fillet_r / math.tan(theta / 2.0)
+    bx, bz = e1[0] + e2[0], e1[1] + e2[1]
+    bn = math.hypot(bx, bz)
+    bx, bz = bx / bn, bz / bn
+    cdist = fillet_r / math.sin(theta / 2.0)
+    center = (FLAT_R + bx * cdist, bz * cdist)
+    p1 = (FLAT_R + e1[0] * t, e1[1] * t)
+    p2 = (FLAT_R + e2[0] * t, e2[1] * t)
+    a1 = math.atan2(p1[1] - center[1], p1[0] - center[0])
+    a2 = math.atan2(p2[1] - center[1], p2[0] - center[0])
+    diff = (a2 - a1 + math.pi) % (2.0 * math.pi) - math.pi
+    pts = [(center[0] + fillet_r * math.cos(a1 + diff * k / n_arc),
+            center[1] + fillet_r * math.sin(a1 + diff * k / n_arc))
+           for k in range(1, n_arc)]
+    return p1, pts, p2
 
 
 # ----------------------------------------------------------------------------
@@ -207,15 +237,19 @@ def export_stl(obj, filepath):
 # dome — the shared outer shell body for both halves
 # ----------------------------------------------------------------------------
 def build_dome(name):
-    """Solid dome half with a rounded outer rim at the string gap.
+    """Solid dome half with rounded edges at both the crown and the string gap.
     Crown at z=0, inner face at z=HALF_WIDTH. Print crown-down.
-    The dome stops at z = HALF_WIDTH - RIM_FILLET, then a quarter-circle arc
-    rounds the outer rim into the inner face, eliminating the sharp 90° edge."""
+    A fillet arc rounds the flat-crown/dome corner at z=0 (CROWN_FILLET), the
+    dome runs up to z = HALF_WIDTH - RIM_FILLET, then a quarter-circle arc
+    rounds the outer rim into the inner face, eliminating both sharp edges."""
     steps = 48
-    prof = [(0.0, 0.0), (FLAT_R, 0.0)]
-    # main dome up to the fillet tangent point
+    p1, crown_arc_pts, p2 = crown_fillet_arc(CROWN_FILLET)
+    prof = [(0.0, 0.0), p1] + crown_arc_pts + [p2]
+    # main dome from the crown fillet's tangent point up to the rim fillet tangent point
+    z_start = p2[1]
+    z_end = HALF_WIDTH - RIM_FILLET
     for s in range(1, steps + 1):
-        z = (HALF_WIDTH - RIM_FILLET) * s / steps
+        z = z_start + (z_end - z_start) * s / steps
         prof.append((r_outer(z), z))
     # quarter-circle fillet: rounds the outer rim from dome into inner face
     # arc centre is inset RIM_FILLET from both the outer wall and the inner face
