@@ -7,13 +7,20 @@ The two halves screw together via a male/female threaded axle.
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic.py
 
-Exports TWO STLs:
-    half_male.stl    - dome half with hollow male threaded axle stub
-    half_female.stl  - dome half with hollow female threaded socket
+Exports THREE STLs:
+    half_male.stl        - dome half with hollow male threaded axle stub
+    half_female.stl      - dome half with hollow female threaded socket
+    axle_double_male.stl - standalone axle, threaded on BOTH ends, for
+                           joining two half_female shells into a yo-yo
+                           with no printed male half.
 
-Assembly: screw the male stub into the female socket. The smooth axle
-section spans the string gap between the two inner faces. String wraps
-the smooth section. No glue, no extra hardware.
+Assembly (male/female pair): screw the male stub into the female socket.
+The smooth axle section spans the string gap between the two inner faces.
+String wraps the smooth section. No glue, no extra hardware.
+
+Assembly (double-female pair): screw axle_double_male into two
+half_female shells, one end each. Same smooth-section string wrap as
+above.
 
 Print both halves crown-down (flat face on bed).
 """
@@ -29,7 +36,7 @@ FLAT_DIAMETER  = 45.0     # diameter of the flat crown (print base)
 
 STRING_GAP     = 4.0      # total gap between the two assembled inner faces
 RIM_FILLET     = 2.0      # radius of the round-over at the outer rim (string area)
-CROWN_FILLET   = 3.0      # radius of the round-over at the flat crown edge (slightly
+CROWN_FILLET   = 5.0      # radius of the round-over at the flat crown edge (slightly
                            # more than RIM_FILLET so the crown edge feels less sharp)
 
 # --- hollow threaded axle ---
@@ -310,6 +317,35 @@ def build_half_female():
 
 
 # ----------------------------------------------------------------------------
+# axle_double_male — standalone axle, male thread on BOTH ends, for joining
+# two half_female shells (no printed male dome half needed)
+# ----------------------------------------------------------------------------
+def build_axle_double_male():
+    """Symmetric double-ended threaded stud. Smooth centre section (same
+    diameter as the male stub's smooth section) spans the string gap
+    between two assembled half_female inner faces; each end then has an
+    independent THREAD_ENGAGE-long male thread that screws into a
+    half_female socket. Both ends use the same thread hand — like a
+    threaded-rod coupler, each shell is spun independently onto its own
+    end, so no reversed thread is needed."""
+    smooth_z0 = -SMOOTH_LEN / 2.0
+    smooth_z1 = SMOOTH_LEN / 2.0
+
+    axle = add_cylinder("axle_double_male", THREAD_MAJOR_D, smooth_z0, smooth_z1,
+                        segs=THREAD_SEGS)
+
+    th_pos = threaded_solid("axthread_pos", TH_MIN_R, TH_MAJ_R,
+                            smooth_z1, smooth_z1 + THREAD_ENGAGE, THREAD_PITCH)
+    boolean(axle, th_pos, 'UNION')
+
+    th_neg = threaded_solid("axthread_neg", TH_MIN_R, TH_MAJ_R,
+                            smooth_z0 - THREAD_ENGAGE, smooth_z0, THREAD_PITCH)
+    boolean(axle, th_neg, 'UNION')
+
+    return axle
+
+
+# ----------------------------------------------------------------------------
 # main
 # ----------------------------------------------------------------------------
 def main():
@@ -321,6 +357,9 @@ def main():
     female = build_half_female()
     female.location = (70.0, 0.0, 0.0)
 
+    axle = build_axle_double_male()
+    axle.location = (140.0, 0.0, 0.0)
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     male.location = (0.0, 0.0, 0.0)
@@ -331,9 +370,14 @@ def main():
     export_stl(female, os.path.join(OUTPUT_DIR, "half_female.stl"))
     female.location = (70.0, 0.0, 0.0)
 
+    axle.location = (0.0, 0.0, 0.0)
+    export_stl(axle, os.path.join(OUTPUT_DIR, "axle_double_male.stl"))
+    axle.location = (140.0, 0.0, 0.0)
+
     print("=" * 60)
-    print("Wrote half_male.stl, half_female.stl to:", OUTPUT_DIR)
+    print("Wrote half_male.stl, half_female.stl, axle_double_male.stl to:", OUTPUT_DIR)
     print("  PRINT: 1x half_male, 1x half_female  (both crown-down)")
+    print("  OR:    2x half_female + 1x axle_double_male")
     print("  yo-yo diameter : %.1f mm" % OUTER_DIAMETER)
     print("  half width     : %.1f mm  (total %.1f mm)" % (HALF_WIDTH, 2 * HALF_WIDTH))
     print("  flat crown dia : %.1f mm" % FLAT_DIAMETER)
