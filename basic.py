@@ -36,18 +36,18 @@ FLAT_DIAMETER  = 45.0     # diameter of the flat crown (print base)
 
 STRING_GAP     = 4.0      # total gap between the two assembled inner faces
 RIM_FILLET     = 2.0      # radius of the round-over at the outer rim (string area)
-CROWN_FILLET   = 5.0      # radius of the round-over at the flat crown edge (slightly
+CROWN_FILLET   = 7.0      # radius of the round-over at the flat crown edge (slightly
                            # more than RIM_FILLET so the crown edge feels less sharp)
 
 # --- hollow threaded axle ---
-AXLE_BORE      = 6.0      # centre bore diameter
-THREAD_MAJOR_D = 10.0     # thread crest diameter
-THREAD_DEPTH   = 0.9      # thread depth (major->minor on radius)
+AXLE_STEM_D    = 10.0     # smooth stem diameter (spans the string gap); thread
+                           # root sits flush with this, crest projects outside it
+THREAD_DEPTH   = 0.9      # thread crest height, projecting OUTSIDE the stem diameter
 THREAD_PITCH   = 2.0      # mm per turn
 THREAD_CLEAR   = 0.35     # radial clearance added to female tap
 THREAD_ENGAGE  = 6.0      # threaded engagement length
 SMOOTH_LEN     = STRING_GAP   # smooth string-contact section = gap width
-FEM_TUBE_OD    = 14.0     # OD of the female socket tube
+FEM_TUBE_OD    = 16.0     # OD of the female socket tube
 
 THREAD_SEGS    = 96
 THREAD_LPP     = 24
@@ -60,8 +60,9 @@ OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo")
 # ----------------------------------------------------------------------------
 R        = OUTER_DIAMETER / 2.0
 FLAT_R   = FLAT_DIAMETER / 2.0
-TH_MAJ_R = THREAD_MAJOR_D / 2.0
-TH_MIN_R = (THREAD_MAJOR_D - 2.0 * THREAD_DEPTH) / 2.0
+TH_MIN_R = AXLE_STEM_D / 2.0        # thread minor radius = stem radius (flush, no shoulder)
+TH_MAJ_R = TH_MIN_R + THREAD_DEPTH  # thread major radius projects beyond the stem
+THREAD_MAJOR_D = TH_MAJ_R * 2.0     # crest diameter (derived, for display/tube sizing)
 C = HALF_WIDTH / math.sqrt(1.0 - (FLAT_R / R) ** 2)
 
 
@@ -281,7 +282,7 @@ def build_half_male():
     smooth_z1 = face_z + SMOOTH_LEN       # end of smooth / start of threads
     tip_z     = smooth_z1 + THREAD_ENGAGE # thread tip
 
-    smooth = add_cylinder("axsmooth", THREAD_MAJOR_D, face_z, smooth_z1,
+    smooth = add_cylinder("axsmooth", AXLE_STEM_D, face_z, smooth_z1,
                           segs=THREAD_SEGS)
     boolean(half, smooth, 'UNION')
 
@@ -309,7 +310,7 @@ def build_half_female():
                          face_z - THREAD_ENGAGE, face_z + 0.2, THREAD_PITCH)
     boolean(half, tap, 'DIFFERENCE')
 
-    bore = add_cylinder("fembore", AXLE_BORE, tube_bottom - 0.2, face_z + 0.2,
+    bore = add_cylinder("fembore", AXLE_STEM_D, tube_bottom - 0.2, face_z + 0.2,
                         segs=THREAD_SEGS)
     boolean(half, bore, 'DIFFERENCE')
 
@@ -331,7 +332,7 @@ def build_axle_double_male():
     smooth_z0 = -SMOOTH_LEN / 2.0
     smooth_z1 = SMOOTH_LEN / 2.0
 
-    axle = add_cylinder("axle_double_male", THREAD_MAJOR_D, smooth_z0, smooth_z1,
+    axle = add_cylinder("axle_double_male", AXLE_STEM_D, smooth_z0, smooth_z1,
                         segs=THREAD_SEGS)
 
     th_pos = threaded_solid("axthread_pos", TH_MIN_R, TH_MAJ_R,
@@ -382,9 +383,8 @@ def main():
     print("  half width     : %.1f mm  (total %.1f mm)" % (HALF_WIDTH, 2 * HALF_WIDTH))
     print("  flat crown dia : %.1f mm" % FLAT_DIAMETER)
     print("  string gap     : %.1f mm" % STRING_GAP)
-    print("  axle           : major %.1f mm, pitch %.1f mm, engage %.1f mm"
-          % (THREAD_MAJOR_D, THREAD_PITCH, THREAD_ENGAGE))
-    print("  bore           : %.1f mm (string/wire passage)" % AXLE_BORE)
+    print("  axle           : stem %.1f mm, major %.1f mm, pitch %.1f mm, engage %.1f mm"
+          % (AXLE_STEM_D, THREAD_MAJOR_D, THREAD_PITCH, THREAD_ENGAGE))
     print("=" * 60)
 
 
