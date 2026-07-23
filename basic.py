@@ -72,25 +72,52 @@ def r_outer(z):
     return R * math.sqrt(max(1.0 - ((HALF_WIDTH - z) / C) ** 2, 0.0))
 
 
+def _dome_curve(phi):
+    """Point on the true elliptical dome curve at parameter phi (0 = pole)."""
+    return R * math.sin(phi), HALF_WIDTH - C * math.cos(phi)
+
+
+def _dome_normal(phi):
+    """Outward unit normal of the dome curve at parameter phi."""
+    gr = math.sin(phi) / R
+    gz = -math.cos(phi) / C
+    n = math.hypot(gr, gz)
+    return gr / n, gz / n
+
+
 def crown_fillet_arc(fillet_r, n_arc=12):
     """Round-over profile points for the flat-crown / dome corner at (FLAT_R, 0).
-    The flat crown is horizontal there; the dome wall leaves the corner at its
-    analytic tangent slope. A circle of radius fillet_r tangent to both lines
-    replaces the sharp corner. Returns (p1, [interior arc pts], p2) where p1
-    sits on the flat crown and p2 sits on the dome wall, both (r, z) tuples."""
-    slope = R * R * HALF_WIDTH / (C * C * FLAT_R)   # dr/dz of the dome at z=0
-    e1 = (-1.0, 0.0)                                 # along the flat, back toward axis
-    norm2 = math.hypot(slope, 1.0)
-    e2 = (slope / norm2, 1.0 / norm2)                # along the dome, away from crown
-    theta = math.acos(max(-1.0, min(1.0, -e2[0])))   # interior angle at the corner
-    t = fillet_r / math.tan(theta / 2.0)
-    bx, bz = e1[0] + e2[0], e1[1] + e2[1]
-    bn = math.hypot(bx, bz)
-    bx, bz = bx / bn, bz / bn
-    cdist = fillet_r / math.sin(theta / 2.0)
-    center = (FLAT_R + bx * cdist, bz * cdist)
-    p1 = (FLAT_R + e1[0] * t, e1[1] * t)
-    p2 = (FLAT_R + e2[0] * t, e2[1] * t)
+    Solves numerically (bisection on the curve parameter) for the circle of
+    radius fillet_r tangent to BOTH the flat crown line and the true dome
+    curve — not just the curve's tangent line at the corner. Using the linear
+    tangent approximation instead (as a smaller-fillet shortcut would allow)
+    leaves the fillet's dome-side endpoint off the real surface by a visible
+    amount once fillet_r is large relative to the dome's curvature, producing
+    a step/lip right where the fillet meets the dome. Returns (p1, [interior
+    arc pts], p2): p1 sits on the flat crown, p2 sits exactly on the dome
+    curve, both (r, z) tuples."""
+    phi0 = math.acos(HALF_WIDTH / C)   # corner, at (FLAT_R, 0)
+
+    def f(phi):
+        _, z = _dome_curve(phi)
+        _, nz = _dome_normal(phi)
+        return z - fillet_r * nz - fillet_r
+
+    lo, hi = phi0 + 1e-9, math.pi / 2.0 - 1e-9
+    f_hi = f(hi)
+    for _ in range(60):
+        mid = (lo + hi) / 2.0
+        if (f(mid) > 0.0) == (f_hi > 0.0):
+            hi = mid
+        else:
+            lo = mid
+    phi_star = (lo + hi) / 2.0
+
+    p2 = _dome_curve(phi_star)
+    nr, nz = _dome_normal(phi_star)
+    center = (p2[0] - fillet_r * nr, p2[1] - fillet_r * nz)
+    p1 = (center[0], 0.0)
+
     a1 = math.atan2(p1[1] - center[1], p1[0] - center[0])
     a2 = math.atan2(p2[1] - center[1], p2[0] - center[0])
     diff = (a2 - a1 + math.pi) % (2.0 * math.pi) - math.pi
