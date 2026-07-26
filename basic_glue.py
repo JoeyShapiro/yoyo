@@ -28,14 +28,13 @@ enclosing wall than the other shapes (see stem_shape_diameter()).
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic_glue.py
 
-Exports STLs:
-    glue_half_male.stl        - dome half with solid male glue peg
-    glue_half_female.stl      - dome half with solid female glue socket
-    glue_axle_double_peg*.stl - standalone double-ended peg axle, hollow
-                                 down its centre, one file per stem
-                                 shape, for joining two half_female
-                                 shells into a yo-yo with no printed
-                                 male half.
+Exports STLs (into OUTPUT_DIR, its own "glue" subfolder):
+    half_male.stl        - dome half with solid male glue peg
+    half_female.stl      - dome half with solid female glue socket
+    axle_double_peg*.stl - standalone double-ended peg axle, hollow
+                            down its centre, one file per stem shape,
+                            for joining two half_female shells into a
+                            yo-yo with no printed male half.
 
 Assembly (male/female pair): glue the male peg into the female socket.
 The smooth axle section spans the string gap between the two inner faces.
@@ -83,7 +82,7 @@ WIRE_BORE_D    = 4.0      # centre through-hole diameter, axle_double_peg ONLY â
 PEG_SEGS       = 96
 SEGMENTS       = 128
 
-OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo")
+OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo/glue")
 
 # ----------------------------------------------------------------------------
 # derived
@@ -428,18 +427,18 @@ def main():
         axle = build_axle_double_peg(stem_segs=sides, stem_dia=stem_dia,
                                      name=obj_name)
         axle.location = (140.0 + i * 30.0, 0.0, 0.0)
-        fname = "glue_axle_double_peg.stl" if suffix == "round" \
-            else "glue_axle_double_peg_%s.stl" % suffix
+        fname = "axle_double_peg.stl" if suffix == "round" \
+            else "axle_double_peg_%s.stl" % suffix
         axles.append((axle, fname))
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     male.location = (0.0, 0.0, 0.0)
-    export_stl(male, os.path.join(OUTPUT_DIR, "glue_half_male.stl"))
+    export_stl(male, os.path.join(OUTPUT_DIR, "half_male.stl"))
     male.location = (0.0, 0.0, 0.0)
 
     female.location = (0.0, 0.0, 0.0)
-    export_stl(female, os.path.join(OUTPUT_DIR, "glue_half_female.stl"))
+    export_stl(female, os.path.join(OUTPUT_DIR, "half_female.stl"))
     female.location = (70.0, 0.0, 0.0)
 
     for axle, fname in axles:
@@ -450,9 +449,9 @@ def main():
 
     axle_files = ", ".join(fname for _, fname in axles)
     print("=" * 60)
-    print("Wrote glue_half_male.stl, glue_half_female.stl,", axle_files, "to:", OUTPUT_DIR)
-    print("  PRINT: 1x glue_half_male, 1x glue_half_female  (both crown-down)")
-    print("  OR:    2x glue_half_female + 1x glue_axle_double_peg (any shape)")
+    print("Wrote half_male.stl, half_female.stl,", axle_files, "to:", OUTPUT_DIR)
+    print("  PRINT: 1x half_male, 1x half_female  (both crown-down)")
+    print("  OR:    2x half_female + 1x axle_double_peg (any shape)")
     print("  yo-yo diameter : %.1f mm" % OUTER_DIAMETER)
     print("  half width     : %.1f mm  (total %.1f mm)" % (HALF_WIDTH, 2 * HALF_WIDTH))
     print("  flat crown dia : %.1f mm" % FLAT_DIAMETER)

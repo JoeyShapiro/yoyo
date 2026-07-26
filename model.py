@@ -4,7 +4,8 @@ Imperial-style yo-yo, parametric, for 3D printing with an electronics cavity.
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python yoyo_imperial.py
 
-It builds THREE parts and exports them as STL (millimetres):
+It builds THREE parts and exports them as STL (millimetres), into
+OUTPUT_DIR, its own "model" subfolder:
     shell.stl       - hollow dome half with screw bosses (NO centre axle)
     lid_male.stl    - inner plate with a HOLLOW THREADED AXLE STUB (male)
     lid_female.stl  - inner plate with a HOLLOW THREADED SOCKET (female)
@@ -74,7 +75,7 @@ THREAD_SEGS    = 96       # angular resolution of the thread
 THREAD_LPP     = 24       # vertical layers per pitch (helix smoothness)
 
 SEGMENTS       = 128      # revolve resolution (lathe smoothness)
-OUTPUT_DIR     = os.path.expanduser("~/Documents/Code/yoyo")   # where STLs are written
+OUTPUT_DIR     = os.path.expanduser("~/Documents/Code/yoyo/model")   # where STLs are written
 
 # ----------------------------------------------------------------------------
 # derived

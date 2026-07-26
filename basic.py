@@ -7,7 +7,7 @@ The two halves screw together via a male/female threaded axle.
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic.py
 
-Exports THREE STLs:
+Exports THREE STLs (into OUTPUT_DIR, its own "basic" subfolder):
     half_male.stl        - dome half with hollow male threaded axle stub
     half_female.stl      - dome half with hollow female threaded socket
     axle_double_male.stl - standalone axle, threaded on BOTH ends, for
@@ -53,7 +53,7 @@ THREAD_SEGS    = 96
 THREAD_LPP     = 24
 SEGMENTS       = 128
 
-OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo")
+OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo/basic")
 
 # ----------------------------------------------------------------------------
 # derived
