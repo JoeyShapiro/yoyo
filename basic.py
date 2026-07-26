@@ -348,19 +348,57 @@ def build_half_female():
 # axle_double_male — standalone axle, male thread on BOTH ends, for joining
 # two half_female shells (no printed male dome half needed)
 # ----------------------------------------------------------------------------
-def build_axle_double_male():
-    """Symmetric double-ended threaded stud. Smooth centre section (same
-    diameter as the male stub's smooth section) spans the string gap
-    between two assembled half_female inner faces; each end then has an
-    independent THREAD_ENGAGE-long male thread that screws into a
-    half_female socket. Both ends use the same thread hand — like a
-    threaded-rod coupler, each shell is spun independently onto its own
-    end, so no reversed thread is needed."""
+# Stem cross-section variants: (suffix, sides). The smooth centre section
+# is built from the same n-gon cylinder primitive as a round stem, just
+# with fewer vertices — 3 = triangle, 8 = octagon, THREAD_SEGS = round.
+# Dodecagon (12) is the "flat enough to rest on a side, but reads as round"
+# middle ground: enough facets for a stable flat, few enough to still be
+# a visible facet rather than a true circle.
+#
+# The smooth stem only spans the free string-gap between the two
+# half_female inner faces — it never inserts into a socket — so its size
+# is decoupled from the threaded ends. For every shaped (non-round) stem
+# we size the polygon so its flat-to-flat distance (inradius) is at least
+# the thread's major (crest) diameter: the stem sits proud of the threads
+# like a bolt head, instead of flush with (or recessed under) the thread
+# root as a naive "same diameter" prism would be. Low side-counts need a
+# much bigger circumradius to keep their flats that wide — e.g. a
+# triangle's circumradius ends up 2x its inradius.
+AXLE_STEM_SHAPES = [
+    ("round",     THREAD_SEGS),
+    ("triangle",  3),
+    ("octagon",   8),
+    ("dodecagon", 12),
+]
+
+
+def stem_shape_diameter(sides):
+    """Circumscribed stem diameter for an n-sided prism whose flat-to-flat
+    distance (inradius) is at least the thread major (crest) diameter.
+    Round stems (sides >= THREAD_SEGS) keep the original flush diameter."""
+    if sides >= THREAD_SEGS:
+        return AXLE_STEM_D
+    return 2.0 * TH_MAJ_R / math.cos(math.pi / sides)
+
+
+def build_axle_double_male(stem_segs=THREAD_SEGS, stem_dia=AXLE_STEM_D,
+                           name="axle_double_male"):
+    """Symmetric double-ended threaded stud. Smooth centre section spans
+    the string gap between two assembled half_female inner faces; each
+    end then has an independent THREAD_ENGAGE-long male thread that
+    screws into a half_female socket. Both ends use the same thread hand
+    — like a threaded-rod coupler, each shell is spun independently onto
+    its own end, so no reversed thread is needed.
+
+    stem_segs sets the smooth section's cross-section: a low vertex count
+    (3, 8, ...) turns the round stem into a flat-sided prism instead;
+    THREAD_SEGS gives a plain round cylinder. stem_dia is that prism's
+    circumscribed diameter — see stem_shape_diameter() for shaped stems."""
     smooth_z0 = -SMOOTH_LEN / 2.0
     smooth_z1 = SMOOTH_LEN / 2.0
 
-    axle = add_cylinder("axle_double_male", AXLE_STEM_D, smooth_z0, smooth_z1,
-                        segs=THREAD_SEGS)
+    axle = add_cylinder(name, stem_dia, smooth_z0, smooth_z1,
+                        segs=stem_segs)
 
     th_pos = threaded_solid("axthread_pos", TH_MIN_R, TH_MAJ_R,
                             smooth_z1, smooth_z1 + THREAD_ENGAGE, THREAD_PITCH)
@@ -385,8 +423,16 @@ def main():
     female = build_half_female()
     female.location = (70.0, 0.0, 0.0)
 
-    axle = build_axle_double_male()
-    axle.location = (140.0, 0.0, 0.0)
+    axles = []
+    for i, (suffix, sides) in enumerate(AXLE_STEM_SHAPES):
+        obj_name = "axle_double_male_" + suffix
+        stem_dia = stem_shape_diameter(sides)
+        axle = build_axle_double_male(stem_segs=sides, stem_dia=stem_dia,
+                                      name=obj_name)
+        axle.location = (140.0 + i * 30.0, 0.0, 0.0)
+        fname = "axle_double_male.stl" if suffix == "round" \
+            else "axle_double_male_%s.stl" % suffix
+        axles.append((axle, fname))
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -398,12 +444,15 @@ def main():
     export_stl(female, os.path.join(OUTPUT_DIR, "half_female.stl"))
     female.location = (70.0, 0.0, 0.0)
 
-    axle.location = (0.0, 0.0, 0.0)
-    export_stl(axle, os.path.join(OUTPUT_DIR, "axle_double_male.stl"))
-    axle.location = (140.0, 0.0, 0.0)
+    for axle, fname in axles:
+        orig_loc = axle.location.copy()
+        axle.location = (0.0, 0.0, 0.0)
+        export_stl(axle, os.path.join(OUTPUT_DIR, fname))
+        axle.location = orig_loc
 
+    axle_files = ", ".join(fname for _, fname in axles)
     print("=" * 60)
-    print("Wrote half_male.stl, half_female.stl, axle_double_male.stl to:", OUTPUT_DIR)
+    print("Wrote half_male.stl, half_female.stl,", axle_files, "to:", OUTPUT_DIR)
     print("  PRINT: 1x half_male, 1x half_female  (both crown-down)")
     print("  OR:    2x half_female + 1x axle_double_male")
     print("  yo-yo diameter : %.1f mm" % OUTER_DIAMETER)
