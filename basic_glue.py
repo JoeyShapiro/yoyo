@@ -3,47 +3,39 @@ Basic Imperial-style yo-yo, parametric, for 3D printing. GLUE variant.
 
 Two halves — lid and shell are ONE piece each. No electronics cavity.
 The two halves join via a plain (non-threaded) male peg / female socket
-that gets GLUED, not screwed. The peg comes in several cross-section
-shapes (round, hexagon, triangle, octagon, dodecagon) — anything but
-round locks rotation while the glue cures and gives more surface area to
-bond, which is the whole point of ditching threads: no thread means no
-self-tightening, so the joint needs to resist twisting on its own. Hex
-was picked over a square specifically because a square's 90-degree
-corners are a sharp stress-concentration point and print a visible seam
-artifact at each corner; a hexagon's 120-degree corners are both more
-crack-resistant and the standard, print-friendly "wrench flat" shape
-(same reasoning as a hex bolt head).
+that gets GLUED, not screwed. The peg/socket cross-section is an OCTAGON,
+not a circle — a round peg can spin freely in a round socket while the
+glue cures (and glue alone doesn't resist torque the way a screw thread
+did), so the interface itself has to be a shape that locks rotation. A
+square was the obvious first choice but its 90-degree corners are a sharp
+stress-concentration point and print a visible seam artifact at each
+corner; an octagon's 135-degree corners are far more crack-resistant
+while still being flat-sided enough to stop the joint from spinning.
+Every axle/shell connection in this file — half_male's peg, half_female's
+socket, and the standalone axle_double_peg end to end — uses this same
+octagon, so the shapes always mate.
 
 Only the standalone axle_double_peg is hollow — a WIRE_BORE_D through-hole
 down its centre axis, for routing wires through as a future test. The dome
 halves (half_male / half_female) are solid; they are not bored through.
 
-Every stem shape is capped at the hexagon's own circumscribed diameter —
-none of them are allowed to grow bigger than that to keep an "ideal" wall
-around the bore, the way the old thread-major-diameter version did. The
-triangle is the one shape whose ideal wall would need more room than the
-cap allows; it still gets the full WIRE_BORE_D bore, just with a thinner
-enclosing wall than the other shapes (see stem_shape_diameter()).
-
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic_glue.py
 
 Exports STLs (into OUTPUT_DIR, its own "glue" subfolder):
-    half_male.stl        - dome half with solid male glue peg
-    half_female.stl      - dome half with solid female glue socket
-    axle_double_peg*.stl - standalone double-ended peg axle, hollow
-                            down its centre, one file per stem shape,
-                            for joining two half_female shells into a
-                            yo-yo with no printed male half.
+    half_male.stl       - dome half with solid octagonal male glue peg
+    half_female.stl     - dome half with solid octagonal female glue socket
+    axle_double_peg.stl - standalone octagonal double-ended peg axle,
+                           hollow down its centre, for joining two
+                           half_female shells into a yo-yo with no
+                           printed male half.
 
 Assembly (male/female pair): glue the male peg into the female socket.
 The smooth axle section spans the string gap between the two inner faces.
 String wraps the smooth section.
 
 Assembly (double-peg pair): glue axle_double_peg into two half_female
-shells, one end each. Same smooth-section string wrap as above. Pick
-whichever stem shape you like the feel/grip of — they're interchangeable,
-all sized to fit the same round female socket.
+shells, one end each. Same smooth-section string wrap as above.
 
 Print both halves crown-down (flat face on bed).
 """
@@ -63,23 +55,28 @@ CROWN_FILLET   = 7.0      # radius of the round-over at the flat crown edge (sli
                            # more than RIM_FILLET so the crown edge feels less sharp)
 
 # --- hollow glue peg/socket (no threads) ---
-PEG_STEM_D     = 10.0     # smooth stem / round peg diameter (spans the string gap
-                           # AND is what fits into the female socket)
+PEG_SIZE       = 10.0     # octagon peg/socket circumscribed diameter (spans the
+                           # string gap AND is what fits into the female socket)
+PEG_SIDES      = 8        # octagon — every axle/shell connection uses this same
+                           # shape so peg and socket always mate; non-round so
+                           # the glue joint can't spin while it cures
 PEG_ENGAGE     = 4.0      # glue engagement length — shallower than a threaded
                            # joint needs, since the whole peg bonds to the socket
                            # instead of relying on thread flank contact
 PEG_CLEARANCE  = 0.15     # radial clearance added to the female socket, per side,
                            # so there's room for glue and the peg isn't a press-fit
 SMOOTH_LEN     = STRING_GAP   # smooth string-contact section = gap width
-FEM_TUBE_OD    = 16.0     # OD of the female socket's reinforcing collar
+FEM_TUBE_OD    = 16.0     # OD of the female socket's reinforcing collar (round —
+                           # it's bulk backing material, not a mating surface)
 
-WIRE_BORE_D    = 4.0      # centre through-hole diameter, axle_double_peg ONLY —
-                           # fits ~4 thin Arduino hookup wires bundled snugly.
-                           # Kept small (down from an earlier 6mm) so the
-                           # triangle stem can still enclose it under the
-                           # hex size cap — see stem_shape_diameter().
+WIRE_BORE_D    = 5.0      # centre through-hole diameter, axle_double_peg ONLY —
+                           # fits ~4 Arduino hookup wires bundled loosely. The
+                           # octagon's inradius comfortably clears this with a
+                           # ~1.6mm wall, so it doesn't need shrinking the way
+                           # a triangle stem would have.
 
-PEG_SEGS       = 96
+ROUND_SEGS     = 96        # resolution for round (non-mating) parts: the
+                           # female collar tube and the wire bore cutter
 SEGMENTS       = 128
 
 OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo/glue")
@@ -302,7 +299,7 @@ def build_half_male():
     face_z = HALF_WIDTH
     tip_z  = face_z + SMOOTH_LEN + PEG_ENGAGE   # smooth string section + glue peg
 
-    stem = add_cylinder("axstem", PEG_STEM_D, face_z, tip_z, segs=PEG_SEGS)
+    stem = add_cylinder("axstem", PEG_SIZE, face_z, tip_z, segs=PEG_SIDES)
     boolean(half, stem, 'UNION')
 
     return half
@@ -318,12 +315,12 @@ def build_half_female():
                                                # socket depth for a solid base
 
     tube = add_cylinder("femtube", FEM_TUBE_OD, tube_bottom, face_z + 0.01,
-                        segs=PEG_SEGS)
+                        segs=ROUND_SEGS)
     boolean(half, tube, 'UNION')
 
-    socket_d = PEG_STEM_D + 2.0 * PEG_CLEARANCE
+    socket_d = PEG_SIZE + 2.0 * PEG_CLEARANCE
     socket = add_cylinder("femsocket", socket_d, face_z - PEG_ENGAGE, face_z + 0.2,
-                          segs=PEG_SEGS)
+                          segs=PEG_SIDES)
     boolean(half, socket, 'DIFFERENCE')
 
     return half
@@ -333,78 +330,17 @@ def build_half_female():
 # axle_double_peg — standalone axle, glue peg on BOTH ends, for joining
 # two half_female shells (no printed male dome half needed)
 # ----------------------------------------------------------------------------
-# Stem cross-section variants: (suffix, sides). The smooth centre section
-# is built from the same n-gon cylinder primitive as a round stem, just
-# with fewer vertices — 3 = triangle, 6 = hexagon, 8 = octagon, 12 =
-# dodecagon, PEG_SEGS = round. Anything but round locks rotation against
-# the socket while glue cures and gives more bonding surface than a bare
-# round dowel — that's the whole reason to offer a choice now that there's
-# no thread to hold the joint together on its own. Hexagon replaces the
-# more obvious "square" choice: same anti-rotation benefit, but 120-degree
-# corners instead of 90 (less of a crack-starting stress riser) and it's
-# the standard shape for a printable, wrench-friendly grip.
-#
-# The insertion peg on each end stays ROUND regardless of the centre
-# shape, because it has to fit the one round female socket every half_female
-# is molded with. Only the free-standing smooth section (gripped by hand,
-# never inserted into anything) takes on the shape.
-AXLE_STEM_SHAPES = [
-    ("round",     PEG_SEGS),
-    ("hexagon",   6),
-    ("triangle",  3),
-    ("octagon",   8),
-    ("dodecagon", 12),
-]
+def build_axle_double_peg(name="axle_double_peg"):
+    """One continuous octagonal prism: the free-standing smooth section
+    (string wrap, between two assembled half_female inner faces) and both
+    end pegs (glued into a half_female socket) are all the same PEG_SIZE
+    octagon, so there's no seam between "grip" and "insertion" geometry —
+    it's just one shape, full length."""
+    z0 = -SMOOTH_LEN / 2.0 - PEG_ENGAGE
+    z1 = SMOOTH_LEN / 2.0 + PEG_ENGAGE
 
-
-def stem_shape_diameter(sides):
-    """Circumscribed stem diameter for an n-sided prism.
-
-    Ideally each shape's flat-to-flat distance (inradius) would be at
-    least the round peg's radius, so it sits proud of the peg ends like a
-    bolt head. But a low vertex count needs a much bigger circumradius to
-    hit that same inradius (a triangle's circumradius is 2x its inradius),
-    and letting every shape chase its own "ideal" size is what made the
-    old design's triangle balloon outward. Instead, every shape is capped
-    at the hexagon's own diameter: nothing is allowed to be bigger than
-    the hex. Shapes with more sides than the hex (octagon, dodecagon) hit
-    their ideal size well under that cap anyway. The triangle (fewer sides
-    than the hex) is the one shape the cap actually binds: it still gets
-    the full WIRE_BORE_D bore through it, just with a thinner enclosing
-    wall than the other shapes end up with. Round stays at the plain peg
-    diameter, unaffected by any of this."""
-    if sides >= PEG_SEGS:
-        return PEG_STEM_D
-    ideal = PEG_STEM_D / math.cos(math.pi / sides)
-    cap = PEG_STEM_D / math.cos(math.pi / 6)   # hexagon's own diameter
-    return min(ideal, cap)
-
-
-def build_axle_double_peg(stem_segs=PEG_SEGS, stem_dia=PEG_STEM_D,
-                          name="axle_double_peg"):
-    """Symmetric double-ended glue peg. Smooth centre section spans the
-    string gap between two assembled half_female inner faces; each end
-    then has a round PEG_ENGAGE-long peg that glues into a half_female
-    socket.
-
-    stem_segs sets the smooth section's cross-section: a low vertex count
-    (3, 6, 8, 12, ...) turns the round stem into a flat-sided prism instead;
-    PEG_SEGS gives a plain round cylinder. stem_dia is that prism's
-    circumscribed diameter — see stem_shape_diameter() for shaped stems."""
-    smooth_z0 = -SMOOTH_LEN / 2.0
-    smooth_z1 = SMOOTH_LEN / 2.0
-
-    axle = add_cylinder(name, stem_dia, smooth_z0, smooth_z1, segs=stem_segs)
-
-    peg_pos = add_cylinder("peg_pos", PEG_STEM_D,
-                           smooth_z1, smooth_z1 + PEG_ENGAGE, segs=PEG_SEGS)
-    boolean(axle, peg_pos, 'UNION')
-
-    peg_neg = add_cylinder("peg_neg", PEG_STEM_D,
-                           smooth_z0 - PEG_ENGAGE, smooth_z0, segs=PEG_SEGS)
-    boolean(axle, peg_neg, 'UNION')
-
-    hollow_bore(axle, smooth_z0 - PEG_ENGAGE - 0.5, smooth_z1 + PEG_ENGAGE + 0.5)
+    axle = add_cylinder(name, PEG_SIZE, z0, z1, segs=PEG_SIDES)
+    hollow_bore(axle, z0 - 0.5, z1 + 0.5)
     return axle
 
 
@@ -420,16 +356,8 @@ def main():
     female = build_half_female()
     female.location = (70.0, 0.0, 0.0)
 
-    axles = []
-    for i, (suffix, sides) in enumerate(AXLE_STEM_SHAPES):
-        obj_name = "axle_double_peg_" + suffix
-        stem_dia = stem_shape_diameter(sides)
-        axle = build_axle_double_peg(stem_segs=sides, stem_dia=stem_dia,
-                                     name=obj_name)
-        axle.location = (140.0 + i * 30.0, 0.0, 0.0)
-        fname = "axle_double_peg.stl" if suffix == "round" \
-            else "axle_double_peg_%s.stl" % suffix
-        axles.append((axle, fname))
+    axle = build_axle_double_peg()
+    axle.location = (140.0, 0.0, 0.0)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -441,23 +369,21 @@ def main():
     export_stl(female, os.path.join(OUTPUT_DIR, "half_female.stl"))
     female.location = (70.0, 0.0, 0.0)
 
-    for axle, fname in axles:
-        orig_loc = axle.location.copy()
-        axle.location = (0.0, 0.0, 0.0)
-        export_stl(axle, os.path.join(OUTPUT_DIR, fname))
-        axle.location = orig_loc
+    orig_loc = axle.location.copy()
+    axle.location = (0.0, 0.0, 0.0)
+    export_stl(axle, os.path.join(OUTPUT_DIR, "axle_double_peg.stl"))
+    axle.location = orig_loc
 
-    axle_files = ", ".join(fname for _, fname in axles)
     print("=" * 60)
-    print("Wrote half_male.stl, half_female.stl,", axle_files, "to:", OUTPUT_DIR)
+    print("Wrote half_male.stl, half_female.stl, axle_double_peg.stl to:", OUTPUT_DIR)
     print("  PRINT: 1x half_male, 1x half_female  (both crown-down)")
-    print("  OR:    2x half_female + 1x axle_double_peg (any shape)")
+    print("  OR:    2x half_female + 1x axle_double_peg")
     print("  yo-yo diameter : %.1f mm" % OUTER_DIAMETER)
     print("  half width     : %.1f mm  (total %.1f mm)" % (HALF_WIDTH, 2 * HALF_WIDTH))
     print("  flat crown dia : %.1f mm" % FLAT_DIAMETER)
     print("  string gap     : %.1f mm" % STRING_GAP)
-    print("  glue peg       : stem %.1f mm, engage %.1f mm, clearance %.2f mm"
-          % (PEG_STEM_D, PEG_ENGAGE, PEG_CLEARANCE))
+    print("  glue peg       : octagon %.1f mm, engage %.1f mm, clearance %.2f mm"
+          % (PEG_SIZE, PEG_ENGAGE, PEG_CLEARANCE))
     print("  wire bore      : %.1f mm dia, axle_double_peg only (halves are solid)"
           % WIRE_BORE_D)
     print("=" * 60)
