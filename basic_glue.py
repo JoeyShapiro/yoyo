@@ -19,6 +19,13 @@ Only the standalone axle_double_peg is hollow — a WIRE_BORE_D through-hole
 down its centre axis, for routing wires through as a future test. The dome
 halves (half_male / half_female) are solid; they are not bored through.
 
+half_female has "JoeyShapiro.dev" engraved into its flat inner face (the
+face that ends up hidden once the two halves are glued together, near the
+string-gap groove at the outer edge of that face) — set in JetBrains Mono,
+curved to follow the face's circular geometry, and oriented to be read by
+looking into the open half from outside (ascenders point toward the
+centre axis, not out toward the rim).
+
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic_glue.py
 
@@ -80,6 +87,19 @@ WIRE_BORE_D    = 5.0      # centre through-hole diameter, axle_double_peg ONLY �
 ROUND_SEGS     = 96        # resolution for round (non-mating) parts: the
                            # female collar tube and the wire bore cutter
 SEGMENTS       = 128
+
+# --- engraved maker's mark, half_female inner face only ---
+TEXT_STRING    = "JoeyShapiro.dev"
+TEXT_FONT_PATH = os.path.expanduser("~/Library/Fonts/JetBrainsMono-Regular.ttf")
+TEXT_RADIUS    = 24.0     # radius (mm) of the circular path the text baseline
+                           # follows on the flat inner face — close to the
+                           # outer edge (the rim fillet starts at
+                           # R - RIM_FILLET = 28mm), near the string-gap
+                           # groove, while leaving clearance for the glyph
+                           # height on both sides
+TEXT_HEIGHT    = 4.5      # glyph bounding-box height (mm), sized to stay
+                           # legible engraved with a 0.4mm nozzle
+TEXT_DEPTH     = 0.4      # engrave depth (mm) - 2 layers at 0.2mm layer height
 
 OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo/glue")
 
@@ -249,6 +269,85 @@ def hollow_bore(obj, z0, z1, segs=64):
     boolean(obj, cutter, 'DIFFERENCE')
 
 
+def load_font(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            "TEXT_FONT_PATH not found: %s (install JetBrains Mono, or "
+            "point TEXT_FONT_PATH at another .ttf/.otf)" % path)
+    for f in bpy.data.fonts:
+        if f.filepath == path:
+            return f
+    return bpy.data.fonts.load(path)
+
+
+def build_curved_text_cutter(text_str, radius, height, cut_depth, z_face,
+                             font_path=TEXT_FONT_PATH, name="text_cutter"):
+    """Solid matching text_str, engraving-cutter shaped: laid flat and bent
+    so its baseline follows a circle of the given radius in the XY plane,
+    for a DIFFERENCE boolean into the flat inner face at z_face (the
+    z=HALF_WIDTH end of build_dome(); the solid there fills z <= z_face).
+
+    Built by hand rather than via a curve-follow modifier: create the text
+    straight (centred on the origin), convert it to a mesh, then remap
+    each vertex's local (x, y) to polar coordinates — x (position along
+    the baseline) becomes an angle (theta = -x / radius), y (height
+    above/below baseline) becomes a radial offset (r = radius - y). This
+    is the same math a curve modifier does internally, done directly on
+    the mesh so the result is deterministic and doesn't depend on
+    modifier/curve setup.
+
+    Both x and y are negated — a 180-degree rotation of the flat text in
+    its own plane, done before the bend — so glyph ascenders end up
+    pointing toward the centre axis instead of out toward the rim, and
+    reading order runs the other way around the circle: the text reads
+    correctly for someone looking INTO the open half from outside (down
+    at the socket) rather than reading it off the page face-on. Negating
+    both axes (rather than just one) matters beyond the visual flip: it's
+    a rotation, not a mirror, so it preserves the mesh's face winding —
+    negating only one axis is a reflection, which flips winding and (as
+    found the first time this was tried) leaves the boolean solver
+    reading the cutter as inside-out on some glyphs.
+
+    The cutter spans from cut_depth below z_face to well above it, so the
+    DIFFERENCE boolean fully penetrates the face and leaves a clean
+    cut_depth-deep pocket regardless of the surface's exact height there."""
+    font = load_font(font_path)
+
+    tc = bpy.data.curves.new(name + "_curve", type='FONT')
+    tc.body = text_str
+    tc.font = font
+    tc.align_x = 'CENTER'
+    tc.align_y = 'CENTER'
+    tc.size = 5.0
+    overshoot = 2.0   # cutter height above z_face, so the cut fully
+                       # penetrates the surface regardless of cut_depth
+    t = (cut_depth + overshoot) / 2.0
+    tc.extrude = t
+    obj = bpy.data.objects.new(name + "_flat", tc)
+    bpy.context.scene.collection.objects.link(obj)
+
+    bpy.context.view_layer.update()
+    tc.size *= height / obj.dimensions.y
+    bpy.context.view_layer.update()
+
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.convert(target='MESH')
+
+    z_shift = (z_face - cut_depth) + t
+    mesh = obj.data
+    for v in mesh.vertices:
+        x, y, z = v.co
+        theta = -x / radius
+        r = radius - y
+        v.co.x = r * math.sin(theta)
+        v.co.y = r * math.cos(theta)
+        v.co.z = z + z_shift
+    mesh.update()
+    return obj
+
+
 def export_stl(obj, filepath):
     bpy.ops.object.select_all(action='DESELECT')
     obj.select_set(True)
@@ -324,6 +423,10 @@ def build_half_female():
     socket = add_cylinder("femsocket", socket_d, face_z - PEG_ENGAGE, face_z + 0.2,
                           segs=PEG_SIDES)
     boolean(half, socket, 'DIFFERENCE')
+
+    text_cutter = build_curved_text_cutter(TEXT_STRING, TEXT_RADIUS, TEXT_HEIGHT,
+                                           TEXT_DEPTH, face_z)
+    boolean(half, text_cutter, 'DIFFERENCE')
 
     return half
 
@@ -402,6 +505,9 @@ def main():
     print("  wire bore      : %.1f mm dia, axle_double_peg.stl only"
           " (axle_double_peg_solid.stl has no bore; halves are solid)"
           % WIRE_BORE_D)
+    print("  inner engraving: \"%s\", half_female.stl only, radius %.1f mm,"
+          " glyph height %.1f mm, depth %.1f mm"
+          % (TEXT_STRING, TEXT_RADIUS, TEXT_HEIGHT, TEXT_DEPTH))
     print("=" * 60)
 
 
