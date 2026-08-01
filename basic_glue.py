@@ -25,7 +25,16 @@ string-gap groove at the outer edge of that face) — set in JetBrains Mono,
 curved to follow the face's circular geometry, and oriented to be read by
 looking into the open half from outside (ascenders point toward the
 centre axis, not out toward the rim). build_half_female()'s mark=True/False
-argument turns this maker's mark on or off; main() exports both.
+argument turns this maker's mark on or off.
+
+half_female also has IMAGE_PATH (Beryl_Nut.png by default) embedded into
+its flat CROWN face — the always-visible exterior face — as a one-colour
+graduated relief: darker, more opaque source pixels engrave deeper, so
+shading and fine texture in the source image survive in one filament
+colour rather than being flattened to a silhouette. build_half_female()'s
+image=True/False argument turns this on or off. main() exports one of each
+combination: the fully decorated half_female.stl (mark + image) and the
+undecorated half_female_plain.stl (neither).
 
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic_glue.py
@@ -33,8 +42,9 @@ or headless:     blender --background --python basic_glue.py
 Exports STLs (into OUTPUT_DIR, its own "glue" subfolder):
     half_male.stl              - dome half with solid octagonal male glue peg
     half_female.stl            - dome half with solid octagonal female glue
-                                  socket, with the maker's mark engraved
-    half_female_plain.stl      - same, without the maker's mark
+                                  socket, with the maker's mark and image
+                                  relief both applied
+    half_female_plain.stl      - same, with neither the mark nor the image
     axle_double_peg.stl        - standalone octagonal double-ended peg axle,
                                   hollow down its centre, for joining two
                                   half_female shells into a yo-yo with no
@@ -103,6 +113,23 @@ TEXT_RADIUS    = 24.0     # radius (mm) of the circular path the text baseline
 TEXT_HEIGHT    = 4.5      # glyph bounding-box height (mm), sized to stay
                            # legible engraved with a 0.4mm nozzle
 TEXT_DEPTH     = 0.4      # engrave depth (mm) - 2 layers at 0.2mm layer height
+
+# --- embedded image relief, half_female crown face only ---
+IMAGE_PATH       = os.path.expanduser("~/Documents/Code/yoyo/Beryl_Nut.png")
+IMAGE_SIZE       = 26.0*1.5   # side length (mm) of the square the image is fit
+                           # into, centred on the crown — the crown's flat
+                           # region only extends to r ~= 19.7mm, so a 26mm
+                           # square (half-diagonal ~18.4mm) stays inside it
+IMAGE_MAX_DEPTH  = 0.7     # engrave depth (mm) at the darkest, most opaque
+                           # pixel; transparent / lightest pixels are flush
+                           # (0 depth) — a graduated relief, not a cutout
+IMAGE_GRID       = 110     # heightmap resolution, cells per side (110 over
+                           # 26mm is ~0.24mm/cell, finer than a 0.4mm nozzle
+                           # can resolve, so detail is nozzle- not mesh-limited)
+IMAGE_SUPERSAMPLE = 3      # source-pixel box filter width averaged into each
+                           # grid cell, to avoid aliasing on fine detail (the
+                           # husk's fiber lines) when downsampling from the
+                           # 256x256 source
 
 OUTPUT_DIR = os.path.expanduser("~/Documents/Code/yoyo/glue")
 
@@ -351,6 +378,121 @@ def build_curved_text_cutter(text_str, radius, height, cut_depth, z_face,
     return obj
 
 
+def load_image(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError("IMAGE_PATH not found: %s" % path)
+    for img in bpy.data.images:
+        if img.filepath_from_user() == path:
+            return img
+    return bpy.data.images.load(path)
+
+
+def build_image_relief_cutter(image_path, size_mm, max_depth, z_face,
+                              grid_n=IMAGE_GRID, supersample=IMAGE_SUPERSAMPLE,
+                              name="image_cutter"):
+    """Solid heightmap cutter for a DIFFERENCE boolean into the flat crown
+    face at z_face (the z=0 end of build_dome(); the solid there fills
+    z >= z_face). Darker, more opaque source pixels engrave deeper;
+    transparent or light pixels are flush (0 depth) — a graduated relief
+    rather than a flat silhouette cutout, so shading/texture in the source
+    image survives in one colour of plastic.
+
+    Built directly as a bmesh grid (not via a boolean per pixel, which
+    wouldn't scale): a top surface whose Z is the per-cell engrave depth,
+    a flat bottom surface well past z_face on the open-air side, and side
+    walls closing the two into one solid, the same shape a font-cutter
+    solid takes — just with a bumpy top instead of a flat or lettered one.
+    Face winding is fixed once at the end via recalc_face_normals, which
+    (unlike the text cutter's letters) is reliable here because this grid
+    is a single connected surface with no separate islands or holes for it
+    to get inconsistent between.
+
+    Each source pixel column is sampled at (1 - u), mirroring the image
+    left-right — matching TEXT_STRING's crown mirroring — because the
+    image is read by a viewer standing outside the crown looking in the
+    +Z direction, the opposite way round from how the flat, unmapped
+    image reads when viewed from +Z looking down (-Z)."""
+    img = load_image(image_path)
+    w, h = img.size
+    pixels = img.pixels[:]
+
+    def sample_px(col, row):
+        col = min(max(col, 0), w - 1)
+        row = min(max(row, 0), h - 1)
+        idx = (row * w + col) * 4
+        return pixels[idx:idx + 4]
+
+    # per-image auto-contrast: stretch the darkest/lightest opaque pixels
+    # to the full depth range, so faded/low-contrast source art still
+    # produces a full-depth relief
+    lums = []
+    for row in range(0, h, 4):
+        for col in range(0, w, 4):
+            r, g, b, a = sample_px(col, row)
+            if a > 0.1:
+                lums.append(0.2126 * r + 0.7152 * g + 0.0722 * b)
+    lum_min, lum_max = min(lums), max(lums)
+    lum_range = max(lum_max - lum_min, 1e-6)
+
+    half = supersample // 2
+
+    def depth_at(u, v):
+        cx = (1.0 - u) * (w - 1)
+        cy = v * (h - 1)
+        acc_r = acc_g = acc_b = acc_a = 0.0
+        for dy in range(-half, half + 1):
+            for dx in range(-half, half + 1):
+                r, g, b, a = sample_px(int(round(cx)) + dx, int(round(cy)) + dy)
+                acc_r += r * a
+                acc_g += g * a
+                acc_b += b * a
+                acc_a += a
+        if acc_a < 1e-6:
+            return 0.0
+        r, g, b = acc_r / acc_a, acc_g / acc_a, acc_b / acc_a
+        a = acc_a / (supersample * supersample)
+        lum_n = (0.2126 * r + 0.7152 * g + 0.0722 * b - lum_min) / lum_range
+        lum_n = min(max(lum_n, 0.0), 1.0)
+        return max_depth * a * (1.0 - lum_n)
+
+    overshoot = 2.0   # cutter extends this far past z_face into open air,
+                       # so the cut fully penetrates the surface regardless
+                       # of per-pixel depth
+    z_bottom = z_face - overshoot
+
+    bm = bmesh.new()
+    top, bot = {}, {}
+    for j in range(grid_n + 1):
+        v = j / grid_n
+        for i in range(grid_n + 1):
+            u = i / grid_n
+            x = (u - 0.5) * size_mm
+            y = (v - 0.5) * size_mm
+            top[(i, j)] = bm.verts.new((x, y, z_face + depth_at(u, v)))
+            bot[(i, j)] = bm.verts.new((x, y, z_bottom))
+    bm.verts.ensure_lookup_table()
+
+    for j in range(grid_n):
+        for i in range(grid_n):
+            bm.faces.new((top[(i, j)], top[(i+1, j)], top[(i+1, j+1)], top[(i, j+1)]))
+            bm.faces.new((bot[(i, j)], bot[(i+1, j)], bot[(i+1, j+1)], bot[(i, j+1)]))
+    for i in range(grid_n):
+        bm.faces.new((top[(i, 0)], top[(i+1, 0)], bot[(i+1, 0)], bot[(i, 0)]))
+        bm.faces.new((top[(i, grid_n)], bot[(i, grid_n)], bot[(i+1, grid_n)], top[(i+1, grid_n)]))
+    for j in range(grid_n):
+        bm.faces.new((top[(0, j)], bot[(0, j)], bot[(0, j+1)], top[(0, j+1)]))
+        bm.faces.new((top[(grid_n, j)], top[(grid_n, j+1)], bot[(grid_n, j+1)], bot[(grid_n, j)]))
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
 def export_stl(obj, filepath):
     bpy.ops.object.select_all(action='DESELECT')
     obj.select_set(True)
@@ -412,7 +554,7 @@ def build_half_male():
 # ----------------------------------------------------------------------------
 # half_female — dome + female glue socket (blind hole + collar), solid
 # ----------------------------------------------------------------------------
-def build_half_female(mark=True, name="half_female"):
+def build_half_female(mark=True, image=True, name="half_female"):
     half = build_dome(name)
     face_z      = HALF_WIDTH
     tube_bottom = face_z - PEG_ENGAGE - 1.5   # collar extends a bit past the
@@ -431,6 +573,11 @@ def build_half_female(mark=True, name="half_female"):
         text_cutter = build_curved_text_cutter(TEXT_STRING, TEXT_RADIUS, TEXT_HEIGHT,
                                                TEXT_DEPTH, face_z)
         boolean(half, text_cutter, 'DIFFERENCE')
+
+    if image:
+        image_cutter = build_image_relief_cutter(IMAGE_PATH, IMAGE_SIZE,
+                                                  IMAGE_MAX_DEPTH, 0.0)
+        boolean(half, image_cutter, 'DIFFERENCE')
 
     return half
 
@@ -466,10 +613,10 @@ def main():
     male = build_half_male()
     male.location = (0.0, 0.0, 0.0)
 
-    female = build_half_female(mark=True)
+    female = build_half_female(mark=True, image=True)
     female.location = (70.0, 0.0, 0.0)
 
-    female_plain = build_half_female(mark=False, name="half_female_plain")
+    female_plain = build_half_female(mark=False, image=False, name="half_female_plain")
     female_plain.location = (100.0, 0.0, 0.0)
 
     axle = build_axle_double_peg(bore=True)
@@ -520,6 +667,10 @@ def main():
     print("  inner engraving: \"%s\", half_female.stl only, radius %.1f mm,"
           " glyph height %.1f mm, depth %.1f mm"
           % (TEXT_STRING, TEXT_RADIUS, TEXT_HEIGHT, TEXT_DEPTH))
+    print("  crown image    : %s, half_female.stl only, %.1f mm square,"
+          " max depth %.1f mm (half_female_plain.stl has neither the"
+          " maker's mark nor the image)"
+          % (os.path.basename(IMAGE_PATH), IMAGE_SIZE, IMAGE_MAX_DEPTH))
     print("=" * 60)
 
 
