@@ -24,14 +24,17 @@ face that ends up hidden once the two halves are glued together, near the
 string-gap groove at the outer edge of that face) — set in JetBrains Mono,
 curved to follow the face's circular geometry, and oriented to be read by
 looking into the open half from outside (ascenders point toward the
-centre axis, not out toward the rim).
+centre axis, not out toward the rim). build_half_female()'s mark=True/False
+argument turns this maker's mark on or off; main() exports both.
 
 Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic_glue.py
 
 Exports STLs (into OUTPUT_DIR, its own "glue" subfolder):
     half_male.stl              - dome half with solid octagonal male glue peg
-    half_female.stl            - dome half with solid octagonal female glue socket
+    half_female.stl            - dome half with solid octagonal female glue
+                                  socket, with the maker's mark engraved
+    half_female_plain.stl      - same, without the maker's mark
     axle_double_peg.stl        - standalone octagonal double-ended peg axle,
                                   hollow down its centre, for joining two
                                   half_female shells into a yo-yo with no
@@ -409,8 +412,8 @@ def build_half_male():
 # ----------------------------------------------------------------------------
 # half_female — dome + female glue socket (blind hole + collar), solid
 # ----------------------------------------------------------------------------
-def build_half_female():
-    half = build_dome("half_female")
+def build_half_female(mark=True, name="half_female"):
+    half = build_dome(name)
     face_z      = HALF_WIDTH
     tube_bottom = face_z - PEG_ENGAGE - 1.5   # collar extends a bit past the
                                                # socket depth for a solid base
@@ -424,9 +427,10 @@ def build_half_female():
                           segs=PEG_SIDES)
     boolean(half, socket, 'DIFFERENCE')
 
-    text_cutter = build_curved_text_cutter(TEXT_STRING, TEXT_RADIUS, TEXT_HEIGHT,
-                                           TEXT_DEPTH, face_z)
-    boolean(half, text_cutter, 'DIFFERENCE')
+    if mark:
+        text_cutter = build_curved_text_cutter(TEXT_STRING, TEXT_RADIUS, TEXT_HEIGHT,
+                                               TEXT_DEPTH, face_z)
+        boolean(half, text_cutter, 'DIFFERENCE')
 
     return half
 
@@ -462,8 +466,11 @@ def main():
     male = build_half_male()
     male.location = (0.0, 0.0, 0.0)
 
-    female = build_half_female()
+    female = build_half_female(mark=True)
     female.location = (70.0, 0.0, 0.0)
+
+    female_plain = build_half_female(mark=False, name="half_female_plain")
+    female_plain.location = (100.0, 0.0, 0.0)
 
     axle = build_axle_double_peg(bore=True)
     axle.location = (140.0, 0.0, 0.0)
@@ -481,6 +488,10 @@ def main():
     export_stl(female, os.path.join(OUTPUT_DIR, "half_female.stl"))
     female.location = (70.0, 0.0, 0.0)
 
+    female_plain.location = (0.0, 0.0, 0.0)
+    export_stl(female_plain, os.path.join(OUTPUT_DIR, "half_female_plain.stl"))
+    female_plain.location = (100.0, 0.0, 0.0)
+
     orig_loc = axle.location.copy()
     axle.location = (0.0, 0.0, 0.0)
     export_stl(axle, os.path.join(OUTPUT_DIR, "axle_double_peg.stl"))
@@ -492,10 +503,11 @@ def main():
     axle_solid.location = orig_loc
 
     print("=" * 60)
-    print("Wrote half_male.stl, half_female.stl, axle_double_peg.stl,",
-          "axle_double_peg_solid.stl to:", OUTPUT_DIR)
-    print("  PRINT: 1x half_male, 1x half_female  (both crown-down)")
-    print("  OR:    2x half_female + 1x axle_double_peg")
+    print("Wrote half_male.stl, half_female.stl, half_female_plain.stl,",
+          "axle_double_peg.stl, axle_double_peg_solid.stl to:", OUTPUT_DIR)
+    print("  PRINT: 1x half_male, 1x half_female (or half_female_plain)"
+          " -- both crown-down")
+    print("  OR:    2x half_female (or half_female_plain) + 1x axle_double_peg")
     print("  yo-yo diameter : %.1f mm" % OUTER_DIAMETER)
     print("  half width     : %.1f mm  (total %.1f mm)" % (HALF_WIDTH, 2 * HALF_WIDTH))
     print("  flat crown dia : %.1f mm" % FLAT_DIAMETER)
