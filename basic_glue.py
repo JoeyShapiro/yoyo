@@ -23,12 +23,14 @@ Run in Blender:  Scripting tab -> open this file -> Run Script
 or headless:     blender --background --python basic_glue.py
 
 Exports STLs (into OUTPUT_DIR, its own "glue" subfolder):
-    half_male.stl       - dome half with solid octagonal male glue peg
-    half_female.stl     - dome half with solid octagonal female glue socket
-    axle_double_peg.stl - standalone octagonal double-ended peg axle,
-                           hollow down its centre, for joining two
-                           half_female shells into a yo-yo with no
-                           printed male half.
+    half_male.stl              - dome half with solid octagonal male glue peg
+    half_female.stl            - dome half with solid octagonal female glue socket
+    axle_double_peg.stl        - standalone octagonal double-ended peg axle,
+                                  hollow down its centre, for joining two
+                                  half_female shells into a yo-yo with no
+                                  printed male half.
+    axle_double_peg_solid.stl  - same axle, no centre bore, for builds with
+                                  no wires to route through it.
 
 Assembly (male/female pair): glue the male peg into the female socket.
 The smooth axle section spans the string gap between the two inner faces.
@@ -330,17 +332,21 @@ def build_half_female():
 # axle_double_peg — standalone axle, glue peg on BOTH ends, for joining
 # two half_female shells (no printed male dome half needed)
 # ----------------------------------------------------------------------------
-def build_axle_double_peg(name="axle_double_peg"):
+def build_axle_double_peg(name="axle_double_peg", bore=True):
     """One continuous octagonal prism: the free-standing smooth section
     (string wrap, between two assembled half_female inner faces) and both
     end pegs (glued into a half_female socket) are all the same PEG_SIZE
     octagon, so there's no seam between "grip" and "insertion" geometry —
-    it's just one shape, full length."""
+    it's just one shape, full length.
+
+    bore=True cuts the WIRE_BORE_D through-hole (for routing wires);
+    bore=False leaves the prism solid, for builds with nothing to route."""
     z0 = -SMOOTH_LEN / 2.0 - PEG_ENGAGE
     z1 = SMOOTH_LEN / 2.0 + PEG_ENGAGE
 
     axle = add_cylinder(name, PEG_SIZE, z0, z1, segs=PEG_SIDES)
-    hollow_bore(axle, z0 - 0.5, z1 + 0.5)
+    if bore:
+        hollow_bore(axle, z0 - 0.5, z1 + 0.5)
     return axle
 
 
@@ -356,8 +362,11 @@ def main():
     female = build_half_female()
     female.location = (70.0, 0.0, 0.0)
 
-    axle = build_axle_double_peg()
+    axle = build_axle_double_peg(bore=True)
     axle.location = (140.0, 0.0, 0.0)
+
+    axle_solid = build_axle_double_peg(name="axle_double_peg_solid", bore=False)
+    axle_solid.location = (170.0, 0.0, 0.0)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -374,8 +383,14 @@ def main():
     export_stl(axle, os.path.join(OUTPUT_DIR, "axle_double_peg.stl"))
     axle.location = orig_loc
 
+    orig_loc = axle_solid.location.copy()
+    axle_solid.location = (0.0, 0.0, 0.0)
+    export_stl(axle_solid, os.path.join(OUTPUT_DIR, "axle_double_peg_solid.stl"))
+    axle_solid.location = orig_loc
+
     print("=" * 60)
-    print("Wrote half_male.stl, half_female.stl, axle_double_peg.stl to:", OUTPUT_DIR)
+    print("Wrote half_male.stl, half_female.stl, axle_double_peg.stl,",
+          "axle_double_peg_solid.stl to:", OUTPUT_DIR)
     print("  PRINT: 1x half_male, 1x half_female  (both crown-down)")
     print("  OR:    2x half_female + 1x axle_double_peg")
     print("  yo-yo diameter : %.1f mm" % OUTER_DIAMETER)
@@ -384,7 +399,8 @@ def main():
     print("  string gap     : %.1f mm" % STRING_GAP)
     print("  glue peg       : octagon %.1f mm, engage %.1f mm, clearance %.2f mm"
           % (PEG_SIZE, PEG_ENGAGE, PEG_CLEARANCE))
-    print("  wire bore      : %.1f mm dia, axle_double_peg only (halves are solid)"
+    print("  wire bore      : %.1f mm dia, axle_double_peg.stl only"
+          " (axle_double_peg_solid.stl has no bore; halves are solid)"
           % WIRE_BORE_D)
     print("=" * 60)
 
